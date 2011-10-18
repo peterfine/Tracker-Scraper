@@ -1,1 +1,41 @@
-Scraper which 
+Scraper which parses a list of the top 100,000 websites (as downloaded from www.alexa.com), and compares each against the database of tracking codes taken from http://www.ghostery.com/ (as found, encoded in JSon, in the source code of their chrome extension). It uses PiCloud to permit either local concurrency in simulation mode, or Amazon Web Services hosted cloud computing (managed by PiCloud), allowing the whole 100,000 sites to be scraped in less than one hour.
+
+BEHAVIOUR
+
+The primary function, parse, is provided with the following parameters:
+  urlRanks: List of alexa ranks for each url, to aid debugging of failed processing batches.
+  urls: List of string urls (including "http:/www." appended to the start of each.
+  bugs: The set of bugs, having been decoded from JSon by the readbugs function.
+
+The site is loaded and converted to a text string using the requests library - a simplifying wrapper to urllib2.
+  http://docs.python-requests.org/en/latest/index.html
+
+Various failures may occur at this point, including 404 errors, timeouts and encoding issues. These should be dealt with in future code, but for now, they're recorded in the failed list.
+
+Since the bugs are stored by ghostery as regex patterns, they're simply each checked against the page text, and added to a list if a match is found. A few of these regexs fail in the python interpreter - future work should check these and fix the patterns.
+
+The function then returns the list of urls, the found bugs, and the failed items.
+
+---
+
+The main function loads the parameters, hardcoded. It then splits the url list up into numJobs groups (by nesting the list in a list of lists), according to the number of sites and the number of jobs requests. If useCloud is true, the jobs are serialized to www.PiCloud.com, who execute the jobs on the amazon web services service. Running accross 500 jobs takes a little over an hour to execute, costing around $2.50. Otherwise, set useCloud to false, set the jobs to around 30, and the local PiCloud simulator will parallize the code on the executing machine.
+
+The results are then written, in JSON format, to 3 files for each job number x. ranksx.out, listing the alexa ranks for the given job. failedx.out, listing the items which did not succeed, for future processing if the code is to be made more robust. successx.out provides the found bugs for each url.
+
+Since there may be hundreds of result files if the cloud option is used, collectResults.py has been included to collate these into two singe success and failed json encoded files for ease of use. Ideally, appropriate newlines would be inserted to make this more human/grep readable, but for now it's just one line of around 100k items length.
+
+
+TO USE
+
+The bugfile (bugs.js) and the website list (top-1m.csv), of format:
+
+1,google.com
+2,facebook.com
+3,youtube.com
+etc...
+
+should be placed in the same directory as the trackerScraper.py code. There should be an empty folder called results in the same folder. trackerScraper should be called as follows:
+
+python trackerScraper.py <PiCloudID> <PiCloudKey>
+
+Where the arguments (don't include the '<'s) are only needed if the useCloud flag is set to True in the script. Results will be placed in the results folder.
