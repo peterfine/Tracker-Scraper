@@ -1,12 +1,19 @@
 import requests, json, re
 from selenium import webdriver
 
-# Use Selenium to get the url source.
+# Use Selenium to get the webpage, driving Firefox - allowing pages to be parsed after 
+# any onload js activity. Note this is subject to bugs and hangs, 
+# and doesn't record output. Do not use, just here as a work in progress.
+# See trackerScraper.py for a usable scraper, albiet one that doesn't parse javascript. 
 def seleniumGetSource(url, driver):
 
+	print "Get"
 	driver.get(url)
+	print "src"
 	src = driver.page_source
+	print "encode"
 	src = unicode.encode(src, 'ascii', 'replace')
+	print "done"
 	return src
 
 # Load bugs as found in the Ghostery chrome extension.
@@ -29,7 +36,10 @@ def readURLs(fileName, num):
 # The main loop - parse the urls with selenium and parse looking for ghostery bugs.	
 def parse(urls, bugs):
 	
-	driver = webdriver.Firefox()
+	# Load the selenium driver.
+	driver = webdriver.Firefox(timeout=5)
+	driver.set_script_timeout(5)
+	driver.implicitly_wait(5)
 	results=[]
 	for url in urls:
 
@@ -39,10 +49,11 @@ def parse(urls, bugs):
 		for bug in bugs:
 
 			try:
+				# Check each bug pattern against the page source.
 				reg = re.compile(bug['pattern'])
 				if re.search(bug['pattern'], rawText):
 					foundBugs.append(bug['name'])
-			except re.error:
+			except re.error, theException:
 				0
 		results.append([[url],foundBugs])
 	return results
@@ -52,6 +63,7 @@ def main():
 	urlList = readURLs("top-1m.csv", 100)
 
 	res = parse(urlList, bugs)
+	# result processing and storage not implemented yet.
 	print res
 	
 		
