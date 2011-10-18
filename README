@@ -1,32 +1,24 @@
 Scraper which parses a list of the top 100,000 websites (as downloaded from www.alexa.com), and compares each against the database of tracking codes taken from http://www.ghostery.com/ (as found, encoded in JSon, in the source code of their chrome extension). It uses PiCloud to permit either local concurrency in simulation mode, or Amazon Web Services hosted cloud computing (managed by PiCloud), allowing the whole 100,000 sites to be scraped in less than one hour.
 
-BEHAVIOUR
+The main program can be found in trackerScraper.py. It consists of a python program that decodes the list of Ghostery tracking bugs and their associated regular expression pattern, from the JSON encoded bugs.js file that I found in the Google Chrome extension directory and should be copied into the directory from which this program is run (I didn’t include the input files in the repository since I’m not sure of their copyright status).  It also parses a list of top 1m sites taken from the Alexa website, using a simple regex to extract the top 100k urls.
 
-The primary function, parse, is provided with the following parameters:
-  urlRanks: List of alexa ranks for each url, to aid debugging of failed processing batches.
-  urls: List of string urls (including "http:/www." appended to the start of each.
-  bugs: The set of bugs, having been decoded from JSon by the readbugs function.
+The main parse() function takes a list of urls and bugs, and uses the python requests library to retrieve the full raw website text.
+http://pypi.python.org/pypi/requests
+This handles redirects, encoding and timeouts, leaving the raw site data to be checked against each Ghostery regex, and added to a list of found trackers to be returned by the function. Failed requests are also recorded and returned.
 
-The site is loaded and converted to a text string using the requests library - a simplifying wrapper to urllib2.
-  http://docs.python-requests.org/en/latest/index.html
+The main() function calls the data processing functions, and has two options for running the main parse() loop in a parallel way. These both benefit from the PiCloud library, allowing both local and Amazon EC2 hosted parallelism. http://www.picloud.com/ . Simulation mode runs all threads locally (around 30 threads proved optimal on my own internet connection and core i7 laptop). However for the generation of the final dataset, PiCloud’s managed cluster was used, reserving 500 instances, simply by setting useCloud to true and numJobs to 500 in the main function.
 
-Various failures may occur at this point, including 404 errors, timeouts and encoding issues. These should be dealt with in future code, but for now, they're recorded in the failed list.
+This took around 1 hour to process all urls (costing around $2.50) – a little longer than expected since PiCloud only seemed to start the jobs in batches of 50 at a time.
+The results are then printed in the json format to a different file for each job, as an when the result completes (cloud.iresult provides a result iterator that blocks until a new result is ready). Many files are created (so any corrupt jobs can be isolated easily), which can be concatenated into one failed and one success result file in the JSON format using the provided collectResults.py script.
 
-Since the bugs are stored by ghostery as regex patterns, they're simply each checked against the page text, and added to a list if a match is found. A few of these regexs fail in the python interpreter - future work should check these and fix the patterns.
+RESULTS
+The results can also be found in the GitHub repository (be sure to view in raw mode).
 
-The function then returns the list of urls, the found bugs, and the failed items.
-
----
-
-The main function loads the parameters, hardcoded. It then splits the url list up into numJobs groups (by nesting the list in a list of lists), according to the number of sites and the number of jobs requests. If useCloud is true, the jobs are serialized to www.PiCloud.com, who execute the jobs on the amazon web services service. Running accross 500 jobs takes a little over an hour to execute, costing around $2.50. Otherwise, set useCloud to false, set the jobs to around 30, and the local PiCloud simulator will parallize the code on the executing machine.
-
-The results are then written, in JSON format, to 3 files for each job number x. ranksx.out, listing the alexa ranks for the given job. failedx.out, listing the items which did not succeed, for future processing if the code is to be made more robust. successx.out provides the found bugs for each url.
-
-Since there may be hundreds of result files if the cloud option is used, collectResults.py has been included to collate these into two singe success and failed json encoded files for ease of use. Ideally, appropriate newlines would be inserted to make this more human/grep readable, but for now it's just one line of around 100k items length.
-
+PARSING JAVASCRIPT
+I was anxious to provide a solution that was able to parse the state of the page after javascript onload has added any elements to the page after the initial http request was complete, since tracking bugs could easily be added to the page at this stage. This is reflected in the sometimes disparity between the results of the above script and the Ghostry results when viewed through the chrome browser extension gui itself.
+singleThreadSeleniumScraper.py shows an initial attempt, which is able to load the post-onload results by usuing Selenium (http://seleniumhq.org/) to actually load firefox and retrieve the pages in a programmatic manner. While this works in a single thread, it is subject to hangs and encoding issues, and was not straightforward to debug due to immature documentation, lack of thread-safety and limited python bindings. Other attempts to enable multhreaded stable post-javascript scraping include using htmlunit’s java based javascript processor (http://htmlunit.sourceforge.net/) through my script using jython to call java through python, however limitied jython encoding support suggests that using native java code would be a better approach to this.
 
 TO USE
-
 The bugfile (bugs.js) and the website list (top-1m.csv), of format:
 
 1,google.com
@@ -39,3 +31,11 @@ should be placed in the same directory as the trackerScraper.py code. There shou
 python trackerScraper.py <PiCloudID> <PiCloudKey>
 
 Where the arguments (don't include the '<'s) are only needed if the useCloud flag is set to True in the script. Results will be placed in the results folder.
+
+FUTURE EXTENSIONS AND FIXES
+•  When running in PiCloud on Amazon EC2, each single job should contain multiple threads of scraping, suiting the highly IO bound task to allow it to run more cheaply.
+•	Failed URLs should be retried at different times, and without the www prefix, before adding to the failed list.
+•	Results could be indexed by bug rather than url.
+•	5 Ghostery regexes are not supported by python. These are current ignored, but should be fixed manually (by avoiding certain nested matching sets).
+•	Configuration should be made via an external file.
+•	Document code using a more formal documentation format.
